@@ -156,8 +156,10 @@ class Shape():
         root.mainloop()
 
         # Update the shape data with the drawn shape
+        value_data=pd.Series(value_data)
+        value_data=(value_data - value_data.min()) / (value_data.max() - value_data.min())
         self.time = time_data
-        self.values = value_data
+        self.values = value_data.tolist()
         self.window = len(time_data)
 
         # Close the figure to avoid multiple figures being opened
@@ -174,8 +176,10 @@ class Shape():
             print('Wrong format, please provide a compatible input.')
         
     def set_random_shape(self,window):
+        value_data=pd.Series(np.random.uniform(0, 1,window))
+        value_data=(value_data - value_data.min()) / (value_data.max() - value_data.min())
         self.time=list(range(window))
-        self.values = np.random.uniform(0, 1,window).tolist()
+        self.values = value_data.tolist()
         self.window=len(np.random.uniform(0, 1,window).tolist())
 
     def plot(self):
@@ -183,7 +187,7 @@ class Shape():
         plt.xlabel('Timestamp')
         plt.ylabel('Values')
         plt.title('Shape wanted')
-        plt.ylim(0,1)
+        plt.ylim(-0.05,1.05)
         plt.show()
 
         
