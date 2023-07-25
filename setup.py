@@ -14,7 +14,6 @@ setup(
     "matplotlib",
     "dtaidistance",
     "numpy",
-    "tkinter",
     "plotly>=4.0.0",
     "dash-table>=4.0.0"
 ],
