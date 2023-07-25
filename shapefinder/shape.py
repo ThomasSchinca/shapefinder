@@ -489,18 +489,4 @@ class finder():
             print('No patterns found to predict. Maybe increase the minimum distance.')
 
 
-data= pd.read_csv('D:/Limit_patterns/df_tot_m.csv',index_col=0,parse_dates=True)
-
-ex = Shape()
-#ex.draw_shape(5)
-ex.set_random_shape(5)
-ex.plot()
-
-find = finder(data,Shape=ex)
-#find.find_patterns(min_d=0.38,metric='euclidean',dtw_sel=3)
-#find.plot_sequences(how='total')
-
-res = find.predict(4,min_d=0.38,metric='dtw',dtw_sel=3)
-
-
 
