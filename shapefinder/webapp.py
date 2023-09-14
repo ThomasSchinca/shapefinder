@@ -634,7 +634,6 @@ def runapplocal():
     
     # Open the Dash app in a web browser and start the server
     webbrowser.open('http://127.0.0.1:8050/')
-    
     app.run_server(debug=True, use_reloader=False)
 
 
