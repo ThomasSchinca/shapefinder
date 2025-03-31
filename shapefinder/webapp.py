@@ -20,7 +20,7 @@ import bisect
 import webbrowser
 
 # Define the function that creates and runs the app locally
-def runapplocal():
+def sf_test():
     # Set the external stylesheets to use the LUX theme from Dash Bootstrap Components
     external_stylesheets = [dbc.themes.LUX]
     
@@ -635,8 +635,4 @@ def runapplocal():
     # Open the Dash app in a web browser and start the server
     webbrowser.open('http://127.0.0.1:8050/')
     app.run_server(debug=True, use_reloader=False)
-
-
-def runappweb():
-    # Open the default web browser and navigate URL where ShapeFinder is located
-    webbrowser.open('https://shapefinder.azurewebsites.net/')
+    

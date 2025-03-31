@@ -16,6 +16,7 @@ import numpy as np
 from dtaidistance import dtw,ed
 import bisect
 import math
+from scipy.cluster.hierarchy import linkage, fcluster
 
 def int_exc(seq_n, win):
     """
@@ -213,7 +214,7 @@ class finder():
         self.Shape=Shape
         self.sequences=sequences
         
-    def find_patterns(self, metric='euclidean', min_d=0.5, dtw_sel=0, select=True):
+    def find_patterns(self, metric='euclidean', min_d=0.5, dtw_sel=0, select=True, min_mat=0, d_increase=None):
         """
         Finds custom patterns in the given dataset using the interactive shape finder.
     
@@ -222,6 +223,8 @@ class finder():
             min_d (float, optional): The minimum distance threshold for a matching sequence. Defaults to 0.5.
             dtw_sel (int, optional): The window size variation for dynamic time warping (Only for 'dtw' mode). Defaults to 0.
             select (bool, optional): Whether to include overlapping patterns. Defaults to True.
+            min_mat (int, optional): The minimum number of matching sequences. Defaults to 0.
+            d_increase (float, optional): The increase of minimum distance to find more sequences(Only when 'min_mat'>0)
         """
         # Clear any previously stored sequences
         self.sequences = []
@@ -241,12 +244,14 @@ class finder():
             seq_n.append((i - i.mean()) / i.std())
     
         # Get exclude list, intervals, and a testing sequence for pattern matching
-        exclude, interv, n_test = int_exc(seq_n, self.Shape.window)
+        exclude, interv, n_test = int_exc(seq, self.Shape.window)
     
         # Convert custom shape values to a pandas Series and normalize it
         seq1 = pd.Series(data=self.Shape.values)
         if seq1.var() != 0.0:
             seq1 = (seq1 - seq1.min()) / (seq1.max() - seq1.min())
+        else :    
+            seq1 = [0.5]*len(seq1)
         seq1 = np.array(seq1)
     
         # Initialize the list to store the found sequences that match the custom shape
@@ -258,14 +263,17 @@ class finder():
                 # Check if the current index is not in the exclude list
                 if i not in exclude:
                     seq2 = n_test[i:i + self.Shape.window]
-                    seq2 = (seq2 - seq2.min()) / (seq2.max() - seq2.min())
+                    if seq2.var() != 0.0:
+                        seq2 = (seq2 - seq2.min()) / (seq2.max() - seq2.min())
+                    else:
+                        seq2 = np.array([0.5]*len(seq2))
                     try:
                         if metric == 'euclidean':
                             # Calculate the Euclidean distance between the custom shape and the current window
                             dist = ed.distance(seq1, seq2)
                         elif metric == 'dtw':
                             # Calculate the Dynamic Time Warping distance between the custom shape and the current window
-                            dist = dtw.distance(seq1, seq2)
+                            dist = dtw.distance(seq1, seq2,use_c=True)
                         tot.append([i, dist, self.Shape.window])
                     except:
                         # Ignore any exceptions (e.g., divide by zero)
@@ -279,7 +287,10 @@ class finder():
                     # Check if the current index is not in the exclude list
                     if i not in exclude:
                         seq2 = n_test[i:i + int(self.Shape.window + lop)]
-                        seq2 = (seq2 - seq2.min()) / (seq2.max() - seq2.min())
+                        if seq2.var() != 0.0:
+                            seq2 = (seq2 - seq2.min()) / (seq2.max() - seq2.min())
+                        else:
+                            seq2 = np.array([0.5]*len(seq2))
                         try:
                             # Calculate the Dynamic Time Warping distance between the custom shape and the current window
                             dist = dtw.distance(seq1, seq2)
@@ -291,34 +302,51 @@ class finder():
         # Create a DataFrame from the list of sequences and distances, sort it by distance, and filter based on min_d
         tot = pd.DataFrame(tot)
         tot = tot.sort_values([1])
-        tot = tot[tot[1] < min_d]
-        toti = tot[0]
+        tot_cut = tot[tot[1] < min_d]
+        toti = tot_cut[0]
     
         if select:
-            # Select representative patterns by eliminating overlapping patterns
             n = len(toti)
-            diff_data = {}
-            for i in range(1, n + 1):
-                column_name = f'diff{i}'
-                diff_data[column_name] = toti.diff(i)
-            diff_df = pd.DataFrame(diff_data)
-            diff_df = diff_df.fillna(self.Shape.window)
+            diff_data = {f'diff{i}': toti.diff(i) for i in range(1, n + 1)}
+            diff_df = pd.DataFrame(diff_data).fillna(self.Shape.window)
             diff_df = abs(diff_df)
-            diff_df = diff_df.min(axis=1)
-            tot = tot[diff_df >= (self.Shape.window / 2)]
+            tot_cut = tot_cut[diff_df.min(axis=1) >= (self.Shape.window / 2)]
     
-        if len(tot) > 0:
+        if len(tot_cut) > min_mat:
             # If there are selected patterns, store them along with their distances in the 'sequences' list
-            for c_lo in range(len(tot)):
-                i = tot.iloc[c_lo, 0]
-                win_l = int(tot.iloc[c_lo, 2])
+            for c_lo in range(len(tot_cut)):
+                i = tot_cut.iloc[c_lo, 0]
+                win_l = int(tot_cut.iloc[c_lo, 2])
                 exclude, interv, n_test = int_exc(seq_n, win_l)
                 col = seq[bisect.bisect_right(interv, i) - 1].name
                 index_obs = seq[bisect.bisect_right(interv, i) - 1].index[i - interv[bisect.bisect_right(interv, i) - 1]]
                 obs = self.data.loc[index_obs:, col].iloc[:win_l]
-                self.sequences.append([obs, tot.iloc[c_lo, 1]])
+                self.sequences.append([obs, tot_cut.iloc[c_lo, 1]])
         else:
-            print('No patterns found')
+            if d_increase==None:
+                print('Not enough patterns found')
+            else:
+                flag_end=False
+                while flag_end==False:
+                    min_d = min_d + d_increase
+                    tot_cut = tot[tot[1] < min_d]
+                    toti = tot_cut[0]
+                    if select:
+                        n = len(toti)
+                        diff_data = {f'diff{i}': toti.diff(i) for i in range(1, n + 1)}
+                        diff_df = pd.DataFrame(diff_data).fillna(self.Shape.window)
+                        diff_df = abs(diff_df)
+                        tot_cut = tot_cut[diff_df.min(axis=1) >= (self.Shape.window / 2)]
+                    if len(tot_cut) > min_mat:
+                        for c_lo in range(len(tot_cut)):
+                            i = tot_cut.iloc[c_lo, 0]
+                            win_l = int(tot_cut.iloc[c_lo, 2])
+                            exclude, interv, n_test = int_exc(seq_n, win_l)
+                            col = seq[bisect.bisect_right(interv, i) - 1].name
+                            index_obs = seq[bisect.bisect_right(interv, i) - 1].index[i - interv[bisect.bisect_right(interv, i) - 1]]
+                            obs = self.data.loc[index_obs:, col].iloc[:win_l]
+                            self.sequences.append([obs, tot_cut.iloc[c_lo, 1]])
+                        flag_end=True
 
         
     def plot_sequences(self,how='units'):
@@ -374,123 +402,120 @@ class finder():
             plt.tight_layout()
             plt.show()
 
-    def predict(self,horizon=6,plot=True,metric='euclidean',min_d=0.5,dtw_sel=0,select=True):
+    def create_sce(self,horizon=6,clu_thres=3):
         """
-        Predicts future data points using the found custom patterns.
-
+        Creates scenarios based on matched series in historical data.
+        
         Args:
-            horizon (int, optional): The number of data points to predict into the future. Defaults to 6.
-            plot (bool, optional): Whether to plot the prediction results. Defaults to True.
-            metric (str, optional): The distance metric to use for shape matching. 'euclidean' or 'dtw'. Defaults to 'euclidean'.
-            min_d (float, optional): The minimum distance threshold for a matching sequence. Defaults to 0.5.
-            dtw_sel (int, optional): The window size variation for dynamic time warping. Defaults to 0.
-            select (bool, optional): Whether to include overlapping patterns. Defaults to True.
-
-        Returns:
-            DataFrame: A DataFrame containing the prediction and confidence intervals (if applicable).
+            horizon (int): The number of future time steps to consider for scenario creation.
+            clu_thres (int): The threshold for clustering, influencing the number of clusters.
+        
         """
-        # Clear the existing sequences list
-        self.sequences = []
+        # Ensure sequences exist before proceeding
+        if len(self.sequences) == 0:
+            raise Exception('No shape found, please fit before predict.')
+    
+        # Extract key stats from stored sequences
+        tot_seq = [
+            [series.name, series.index[-1], series.min(), series.max(), series.sum()] 
+            for series, weight in self.sequences]
+    
+        pred_seq = []
+        # Generate future sequences for each stored sequence
+        for col, last_date, mi, ma, somme in tot_seq:
+            date = self.data.index.get_loc(last_date)  # Get index position of the last known date
+            # Ensure there are enough future values for the specified horizon
+            if date + horizon < len(self.data):
+                # Extract future values for the given column
+                seq = self.data.iloc[date + 1 : date + 1 + horizon, self.data.columns.get_loc(col)].reset_index(drop=True)
+                # Normalize sequence using min-max scaling
+                seq = (seq - mi) / (ma - mi)
+                pred_seq.append(seq.tolist())
+    
+        # Convert sequences to a DataFrame
+        tot_seq = pd.DataFrame(pred_seq)
+        # Perform hierarchical clustering
+        linkage_matrix = linkage(tot_seq, method='ward')
+        clusters = fcluster(linkage_matrix, horizon / clu_thres, criterion='distance')
+        # Assign clusters to the sequences
+        tot_seq['Cluster'] = clusters
+        # Compute mean values per cluster
+        val_sce = tot_seq.groupby('Cluster').mean()
+        # Set the index to the relative frequency of each cluster
+        val_sce.index = round(pd.Series(clusters).value_counts(normalize=True).sort_index(), 2)
+        # Store the computed scenarios
+        self.val_sce = val_sce
         
-        # Check if dtw_sel is zero when metric is 'euclidean'
-        
-        if metric=='euclidean':
-            dtw_sel=0
-        
-        # Extract individual columns (time series) from the data
-        seq = []
-        for i in range(len(self.data.columns)): 
-            seq.append(self.data.iloc[:, i])
-        
-        # Normalize each column (time series)
-        seq_n = []
-        for i in seq:
-            seq_n.append((i - i.mean()) / i.std())
-        
-        # Get exclude list, intervals, and a testing sequence for pattern matching
-        exclude, interv, n_test = int_exc(seq_n, self.Shape.window)
-        
-        # Convert custom shape values to a pandas Series and normalize it
+    def predict(self, horizon=6, clu_thres=3):
+        """
+        Predicts future values based on historical sequences using hierarchical clustering.
+    
+        Args:
+            horizon (int): The number of future time steps to predict.
+            clu_thres (int): The threshold for clustering, affecting the number of clusters.
+    
+        Returns:
+            pd.Series: The final predicted sequence.
+        """
+        # Ensure sequences exist before proceeding
+        if len(self.sequences) == 0:
+            raise Exception('No shape found, please fit before predict.')
+        # Extract key statistics from stored sequences
+        tot_seq = [
+            [series.name, series.index[-1], series.min(), series.max(), series.sum()] 
+            for series, weight in self.sequences]
+    
+        pred_seq = []
+        # Generate future sequences for each stored sequence
+        for col, last_date, mi, ma, somme in tot_seq:
+            date = self.data.index.get_loc(last_date)  # Get index position of the last known date
+            if date + horizon < len(self.data):
+                # Extract future values for the given column
+                seq = self.data.iloc[date + 1 : date + 1 + horizon, self.data.columns.get_loc(col)].reset_index(drop=True)
+                # Normalize sequence using min-max scaling
+                seq = (seq - mi) / (ma - mi)
+                pred_seq.append(seq.tolist())
+
+        tot_seq = pd.DataFrame(pred_seq)
+        # Perform hierarchical clustering
+        linkage_matrix = linkage(tot_seq, method='ward')
+        clusters = fcluster(linkage_matrix, horizon / clu_thres, criterion='distance')
+        # Assign clusters to the sequences
+        tot_seq['Cluster'] = clusters
+        # Compute mean values per cluster
+        val_sce = tot_seq.groupby('Cluster').mean()
+        # Determine the most frequent cluster
+        pr = round(pd.Series(clusters).value_counts(normalize=True).sort_index(), 2)
+        # Extract the cluster with the highest frequency
+        pred_ori = val_sce.loc[pr == pr.max(), :]
+        # Compute the mean prediction across sequences in the most frequent cluster
+        pred_ori = pred_ori.mean(axis=0)
+        # Retrieve original shape values for denormalization
         seq1 = pd.Series(data=self.Shape.values)
-        if seq1.var() != 0.0:
-            seq1 = (seq1 - seq1.min()) / (seq1.max() - seq1.min())
-        seq1 = np.array(seq1)
-        
-        # Initialize the list to store the sequences that match the custom shape
-        tot_seq = []
-        
-        if dtw_sel == 0:
-            # Loop through the testing sequence
-            for i in range(len(n_test)):
-                # Check if the current index is not in the exclude list
-                if i not in exclude:
-                    seq2 = n_test[i:i + self.Shape.window]
-                    seq2 = (seq2 - seq2.min()) / (seq2.max() - seq2.min())
-                    try:
-                        if metric == 'euclidean':
-                            # Calculate the Euclidean distance between the custom shape and the current window
-                            dist = ed.distance(seq1, seq2)
-                        elif metric == 'dtw':
-                            # Calculate the Dynamic Time Warping distance between the custom shape and the current window
-                            dist = dtw.distance(seq1, seq2)
-                        # Check if the distance meets the conditions for a valid pattern
-                        if (i + horizon not in exclude) & (i < len(n_test) - self.Shape.window - horizon) & (dist < min_d):
-                            # Extract the next horizon data points after the current window as a new sequence
-                            seq3 = n_test[i + self.Shape.window:i + self.Shape.window + horizon]
-                            seq3 = (seq3 - seq2.min()) / (seq2.max() - seq2.min())
-                            tot_seq.append(seq3.tolist())
-                    except:
-                        # Ignore any exceptions (e.g., divide by zero)
-                        pass
-        else:
-            # Loop through the range of window size variations (dtw_sel)
-            for lop in range(int(-dtw_sel), int(dtw_sel) + 1):
-                # Get exclude list, intervals, and a testing sequence for pattern matching with the current window size
-                exclude, interv, n_test = int_exc(seq_n, self.Shape.window + lop)
-                for i in range(len(n_test)):
-                    # Check if the current index is not in the exclude list
-                    if i not in exclude:
-                        seq2 = n_test[i:i + int(self.Shape.window + lop)]
-                        seq2 = (seq2 - seq2.min()) / (seq2.max() - seq2.min())
-                        try:
-                            # Calculate the Dynamic Time Warping distance between the custom shape and the current window
-                            dist = dtw.distance(seq1, seq2)
-                            # Check if the distance meets the conditions for a valid pattern
-                            if (i + horizon not in exclude) & (i < len(n_test) - self.Shape.window - horizon) & (dist < min_d):
-                                # Extract the next horizon data points after the current window as a new sequence
-                                seq3 = n_test[i + self.Shape.window:i + self.Shape.window + horizon]
-                                seq3 = (seq3 - seq2.min()) / (seq2.max() - seq2.min())
-                                tot_seq.append(seq3.tolist())
-                        except:
-                            # Ignore any exceptions (e.g., divide by zero)
-                            pass 
-        
-        if len(tot_seq) > 0: 
-            # If valid sequences were found, calculate mean and standard deviation of the sequences
-            tot_seq = pd.DataFrame(tot_seq)
-            std_f = (1.96 * tot_seq.std()) / np.sqrt(len(tot_seq))
-            std_f = std_f.fillna(0)
-            mean_f = tot_seq.mean()
-        
-            if plot == True:
-                # If 'plot' is True, plot the prediction along with the custom shape
-                plt.figure(figsize=(15, 10))
-                plt.plot(range(self.Shape.window - 1, self.Shape.window + horizon), [self.Shape.values[-1]] + mean_f.tolist(), color='r', marker='o')
-                plt.plot(self.Shape.values, marker='o')
-                upper_bound = np.array([self.Shape.values[-1]] + (mean_f + std_f).tolist())
-                lower_bound = np.array([self.Shape.values[-1]] + (mean_f - std_f).tolist())
-                plt.fill_between(range(self.Shape.window - 1, self.Shape.window + horizon), lower_bound, upper_bound, color='r', alpha=0.2)
-                plt.xlabel('Timestamp')
-                plt.ylabel('Values')  # Corrected typo in xlabel -> ylabel
-                plt.title('Prediction - Horizon ' + str(horizon))
-                plt.grid()
-                plt.show()
-        
-            # Return the DataFrame with mean, lower bound, and upper bound of the prediction
-            return pd.DataFrame([mean_f, mean_f - std_f, mean_f + std_f], index=['Prediction', 'CI lower', 'CI upper']).T
-        else:
-            # If no valid sequences were found, inform the user
-            print('No patterns found to predict. Maybe increase the minimum distance.')
+        # Denormalize predictions back to original scale
+        preds = pred_ori * (seq1.max() - seq1.min()) + seq1.min()
+    
+        return preds
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
