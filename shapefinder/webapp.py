@@ -633,6 +633,7 @@ def sf_test():
         return dcc.send_data_frame(df.to_csv, "Output.csv")
     
     # Open the Dash app in a web browser and start the server
-    webbrowser.open('http://127.0.0.1:8050/')
-    app.run_server(debug=True, use_reloader=False)
+    app.run_server(debug=False, use_reloader=False)
     
+sf_test()    
+webbrowser.open('http://127.0.0.1:8050/')

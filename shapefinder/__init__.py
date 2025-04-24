@@ -1,3 +1,4 @@
 from .shape import Shape
 from .shape import finder
-from .webapp import sf_test
+from .shape import Shape_3D
+from .shape import finder_3D

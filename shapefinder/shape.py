@@ -17,6 +17,19 @@ from dtaidistance import dtw,ed
 import bisect
 import math
 from scipy.cluster.hierarchy import linkage, fcluster
+from scipy.spatial import distance
+from scipy.sparse.csgraph import minimum_spanning_tree
+import matplotlib.colors as mcolors
+import matplotlib.cm as cm
+import plotly.graph_objects as go
+from plotly.offline import plot
+import ot
+from math import tanh
+from scipy.spatial.distance import pdist, squareform
+
+# =============================================================================
+# ShapeFinder for Time series Autoregressive
+# =============================================================================
 
 def int_exc(seq_n, win):
     """
@@ -500,14 +513,571 @@ class finder():
 
 
 
+# =============================================================================
+# ShapeFinder for 3D dataset Autoregressive
+# =============================================================================
+
+def compute_overlap(row1, row2):
+    # Initialize the overlap and union volumes to 1 (to multiply values in each dimension)
+    overlap = 1
+    union = 1
+    # Loop over each of the 3 dimensions (x, y, z)
+    for i in range(3):
+        # Extract the low and high bounds of row1 and row2 in the current dimension
+        low1, high1 = row1[2*i], row1[2*i+1]
+        low2, high2 = row2[2*i], row2[2*i+1]
+        # Compute the overlap (intersection) interval in the current dimension
+        intersect_low = max(low1, low2)
+        intersect_high = min(high1, high2)
+        # Compute the union (combined) interval in the current dimension
+        union_low = min(low1, low2)
+        union_high = max(high1, high2)
+        # If there is an overlap in this dimension
+        if intersect_high > intersect_low:
+            overlap *= (intersect_high - intersect_low)
+        else:
+            # No overlap in this dimension means the total overlap is zero
+            overlap = 0
+            break
+        # Compute union volume contribution for this dimension
+        union *= (union_high - union_low)
+    # Return the ratio of the overlapping volume to the union volume (IoU-like measure)
+    return overlap / union if union > 0 else 0
 
 
+def filter_overlaps(df):
+    # Repeatedly remove rows until there are no overlaps above the threshold
+    while True:
+        to_drop = set()  # Keep track of row indices to drop in this iteration
+        # Compare each pair of rows in the DataFrame
+        for i, row1 in df.iterrows():
+            for j, row2 in df.iterrows():
+                if i < j:  # Avoid redundant and self-comparisons
+                    # Compute the overlap ratio between the two boxes
+                    overlap_ratio = compute_overlap(row1[:6], row2[:6])
+                    # If the overlap is greater than the threshold (0.25)
+                    if overlap_ratio > 0.25:
+                        # Drop the one with the lower priority (based on the EMD value)
+                        # Keep the one with the smaller value in column 6
+                        to_drop.add(i if row1[6] > row2[6] else j)
+        # If no rows need to be dropped, we're done
+        if not to_drop:
+            break
+        # Drop the identified rows from the DataFrame
+        df = df.drop(index=to_drop)
+    # Return the filtered DataFrame with overlaps reduced
+    return df
+
+def dtw_distance(x, y):
+    return dtw.distance(x, y)
+
+def cluster_based_on_threshold(array_list, threshold):
+    # Extract the past futures from each matching cases
+    last_column = np.array([arr[:, 3] for arr in array_list])
+    # Compute pairwise Euclidean distances between past futures
+    distances = squareform(pdist(last_column, metric='euclidean'))
+    # Initialize all cluster labels as -1 (unassigned)
+    cluster_labels = np.full(len(array_list), -1)
+    current_cluster = 0  # Start assigning cluster IDs from 0
+    # Iterate through each element to assign cluster labels
+    for i in range(len(array_list)):
+        if cluster_labels[i] == -1:
+            # Assign a new cluster ID to the unassigned element
+            cluster_labels[i] = current_cluster
+            # Check all following elements for closeness
+            for j in range(i + 1, len(array_list)):
+                # If the distance is below or equal to the threshold, assign the same cluster
+                if distances[i, j] <= threshold:
+                    cluster_labels[j] = current_cluster
+            # Move to the next cluster label for future elements
+            current_cluster += 1
+    # Return the cluster labels for all elements
+    return cluster_labels
 
 
+class Shape_3D():
+    """
+    A class to represent and visualize a 3D shape based on a 3D numpy array.
+    
+    Attributes:
+    -----------
+    coordinates : np.array
+        Normalized (x, y, z) coordinates of the non-zero elements.
+    weights : np.array
+        Normalized weights (intensity values) of the non-zero elements.
+    dim : tuple
+        Original shape (dimensions) of the input 3D array.
+
+    Methods:
+    --------
+    set_shape(input_shape):
+        Parses a 3D numpy array to extract non-zero voxel coordinates and weights.
+    
+    plot(axis=True, mini_b=0.01):
+        Plots the 3D shape using Plotly with a minimum spanning tree overlay.
+    """
+
+    def __init__(self, coordinates=None, weights=None, dim=None):
+        self.coordinates = coordinates  # Normalized voxel coordinates
+        self.weights = weights          # Normalized intensity values
+        self.dim = dim                  # Dimensions of the original input array
+
+    def set_shape(self, input_shape):
+        """
+        Converts a 3D numpy array into a normalized shape representation.
+        Non-zero voxels become points with associated weights (intensity values).
+        """
+        try:
+            sub_array = np.array(input_shape)  # Convert input to numpy array (if not already)
+            bound_1 = np.array([[0, 0, 0], list(sub_array.shape)])  # Shape bounds for normalization
+
+            # Get indices of non-zero voxels
+            non_zero_indices = np.argwhere(sub_array != 0)
+
+            # Convert indices into normalized 3D coordinates
+            coordinates = np.array([(idx[0], idx[1], idx[2]) for idx in non_zero_indices])
+            coordinates = (coordinates - bound_1.min(axis=0)) / (
+                bound_1.max(axis=0) - 1 - bound_1.min(axis=0)
+            )
+
+            # Check if there is more than one non-zero element
+            if len(non_zero_indices) > 1:
+                weights = sub_array[sub_array != 0]
+
+                # Normalize weights to [0, 1]
+                weights = weights / np.sum(weights)
+            else:
+                raise Exception("Please provide Input with more than 1 non-zero value.")
+
+            # Save processed data
+            self.coordinates = coordinates
+            self.weights = weights
+            self.dim = sub_array.shape
+
+        except:
+            print('Wrong format, please provide a 3D numpy array input.')
+
+    def plot(self, axis=True, mini_b=0.01):
+        """
+        Plots the 3D shape using Plotly:
+        - Points are colored by weight intensity
+        - Minimum spanning tree (MST) connects the points to show structure
+        
+        Parameters:
+        -----------
+        axis : bool
+            If False, hides the plot axes.
+        mini_b : float
+            Minimum weight value used for color normalization.
+        """
+        if self.coordinates is None:
+            raise Exception('Please first set the Shape with "set_shape" to then plot it.')
+
+        # Compute pairwise distances between points
+        dist_matrix = distance.cdist(self.coordinates, self.coordinates)
+
+        # Generate the Minimum Spanning Tree from the distance matrix
+        mst = minimum_spanning_tree(dist_matrix)
+        edges = np.transpose(mst.nonzero())  # Get indices of edges in the MST
+
+        # Extract coordinates and weights for plotting
+        x, y, z = self.coordinates[:, 0], self.coordinates[:, 1], self.coordinates[:, 2]
+        flat_indices = self.weights
+
+        # Set up color mapping using logarithmic normalization
+        cmap = cm.get_cmap('Reds')
+        norm = mcolors.LogNorm(vmin=mini_b, vmax=flat_indices.max())
+        marker_colors = cmap(norm(flat_indices))
+
+        # Plot non-zero points as markers
+        fig = go.Figure(data=[
+            go.Scatter3d(
+                x=x, y=y, z=z,
+                mode='markers',
+                marker=dict(size=10, color=marker_colors)
+            )
+        ])
+
+        # Add MST edges as grey lines
+        for edge in edges:
+            fig.add_trace(go.Scatter3d(
+                x=[self.coordinates[edge[0], 0], self.coordinates[edge[1], 0]],
+                y=[self.coordinates[edge[0], 1], self.coordinates[edge[1], 1]],
+                z=[self.coordinates[edge[0], 2], self.coordinates[edge[1], 2]],
+                mode='lines',
+                line=dict(color='grey', width=2)
+            ))
+
+        # Configure layout
+        fig.update_layout(
+            scene=dict(
+                xaxis_title='x',
+                yaxis_title='y',
+                zaxis_title='time'
+            ),
+            title='Shape',
+            showlegend=False
+        )
+
+        # Optionally hide axes
+        if axis == False:
+            fig.update_layout(scene=dict(
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                zaxis=dict(visible=False)
+            ))
+
+        # Display the plot
+        plot(fig, auto_open=True)
 
 
+class finder_3D():
+    """
+    A class to identify and predict 3D spatial-temporal patterns
+    comparisons between a input shape and historical data.
 
+    Attributes:
+    -----------
+    data : np.ndarray
+        The 3D historical data array to search for patterns.
+    Shape_3D : Shape_3D
+        An instance of the Shape_3D class used as the input shape.
+    sequences : list
+        A list to store matched similar patterns.
+    df_pred : pd.DataFrame
+        DataFrame to store prediction results.
+    """
 
+    def __init__(self, data, Shape_3D=Shape_3D(), sequences=[], df_pred=None):
+        self.data = data
+        self.Shape_3D = Shape_3D
+        self.sequences = sequences
+        self.df_pred = df_pred
+
+    def find_patterns(self, flex=2, window='half', mode='both', min_emd=0.15,
+                      min_ratio=0.15, select=True, min_mat=0):
+        """
+        Identify subvolumes in the data that closely resemble the Shape_3D pattern.
+
+        Parameters:
+        -----------
+        flex : int
+            Flexibility parameter for stretching/shrinking the window.
+        window : str
+            Determines the step size ('half' of shape dimension or 'none').
+        mode : str
+            'both' considers EMD and size similarity; otherwise EMD only.
+        min_emd : float
+            Minimum threshold for EMD similarity.
+        min_ratio : float
+            Minimum threshold for size ratio similarity.
+        select : bool
+            Whether to filter overlapping subvolumes.
+        min_mat : int
+            Minimum number of matches to retain.
+        """
+
+        # Set step sizes based on window mode
+        if window == 'half':
+            r1 = int(self.Shape_3D.dim[0] / 2)
+            r2 = int(self.Shape_3D.dim[1] / 2)
+            r3 = int(self.Shape_3D.dim[2] / 2)
+        else:
+            r1 = r2 = r3 = 1
+
+        dist_arr = []
+        # Iterate through 3D data with sliding windows and flexible offsets
+        for x in range(0, self.data.shape[0] - int(self.Shape_3D.dim[0] / flex) - self.Shape_3D.dim[0], r1):
+            for y in range(0, self.data.shape[1] - int(self.Shape_3D.dim[1] / flex) - self.Shape_3D.dim[1], r2):
+                for z in range(0, self.data.shape[2] - int(self.Shape_3D.dim[2] / flex) - self.Shape_3D.dim[2], r3):
+                    for x_r in [-int(self.Shape_3D.dim[0] / flex), 0, int(self.Shape_3D.dim[0] / flex)]:
+                        for y_r in [-int(self.Shape_3D.dim[1] / flex), 0, int(self.Shape_3D.dim[1] / flex)]:
+                            for z_r in [-int(self.Shape_3D.dim[2] / flex), 0, int(self.Shape_3D.dim[2] / flex)]:
+
+                                # Extract subvolume
+                                sub_array_2 = self.data[x:x + x_r + self.Shape_3D.dim[0],
+                                                        y:y + y_r + self.Shape_3D.dim[1],
+                                                        z:z + z_r + self.Shape_3D.dim[2]]
+                                # Check if subvolume contains non-zero values
+                                if not (sub_array_2.flatten() == 0).all():
+                                    bound=np.array([[0,0,0],list(sub_array_2.shape)])
+                                    zero_indices_2 = np.argwhere(sub_array_2!=0)
+                                    coordinates_2 = [(idx[0],idx[1],idx[2]) for idx in zero_indices_2]
+                                    coordinates_2 = np.array(coordinates_2)
+                                    coordinates_2 = (coordinates_2 - bound.min(axis=0)) / (bound.max(axis=0)-1 - bound.min(axis=0))
+                                    coordinates_2 = np.nan_to_num(coordinates_2, nan=0.5)
+                                    if len(zero_indices_2)>1:
+                                        weights_2 = sub_array_2[sub_array_2!=0]
+                                        weights_2 = weights_2 / np.sum(weights_2)
+                                    else:
+                                        weights_2=np.array([1])
+                                    # Compute Earth Mover’s Distance (EMD)
+                                    d_met = ot.dist(self.Shape_3D.coordinates, coordinates_2, metric='euclidean')
+                                    d_min = ot.emd2(self.Shape_3D.weights, weights_2, d_met)
+
+                                    # Rotate subvolume for better match (0–3 rotations)
+                                    best_rota = 0
+                                    for i in range(3):
+                                        sub_array_3 = np.rot90(sub_array_2, k=i+1, axes=(0, 1))
+                                        non_zero_indices_3 = np.argwhere(sub_array_3 != 0)
+                                        bound=np.array([[0,0,0],list(sub_array_3.shape)])
+                                        coordinates_3 = [(idx[0], idx[1], idx[2]) for idx in non_zero_indices_3]
+                                        coordinates_3 = np.array(coordinates_3)
+                                        coordinates_3 = (coordinates_3 - bound.min(axis=0)) / (bound.max(axis=0)-1 - bound.min(axis=0))
+                                        coordinates_3 = np.nan_to_num(coordinates_3, nan=0.5)
+                                        weights_3 = sub_array_3[sub_array_3!=0]
+                                        weights_3 = weights_3 / np.sum(weights_3)
+                                        d_met = ot.dist(self.Shape_3D.coordinates, coordinates_3, metric='euclidean')
+                                        d_sub = ot.emd2(self.Shape_3D.weights, weights_3, d_met)
+                                        if d_min > d_sub:
+                                            d_min = d_sub
+                                            best_rota = i + 1
+
+                                    # Store results: coordinates, EMD, rotation, size ratio
+                                    dist_arr.append([
+                                        x, x + x_r + self.Shape_3D.dim[0],
+                                        y, y + y_r + self.Shape_3D.dim[1],
+                                        z, z + z_r + self.Shape_3D.dim[2],
+                                        d_min, best_rota,
+                                        abs(tanh(np.log(len(weights_2) / len(self.Shape_3D.weights))))
+                                    ])
+        dist_arr = pd.DataFrame(dist_arr)
+
+        # Combine EMD and ratio if mode is 'both'
+        dist_arr['Sum'] = dist_arr[6] + dist_arr[8] if mode == 'both' else dist_arr[6]
+        dist_arr = dist_arr.sort_values('Sum').iloc[:1000]
+
+        # Filter overlapping shapes
+        if select:
+            dist_arr = filter_overlaps(dist_arr)
+
+        # Final selection based on thresholds
+        if mode == 'both':
+            dist_arr_sub = dist_arr[(dist_arr[6] < min_emd) & (dist_arr[8] < min_ratio)]
+        else:
+            dist_arr_sub = dist_arr[dist_arr[6] < min_emd]
+
+        # Ensure at least `min_mat` matches
+        if len(dist_arr_sub) < min_mat:
+            dist_arr_sub = dist_arr.iloc[:min_mat, :]
+
+        self.sequences = dist_arr_sub
+
+    def predict(self, h, thres_clu):
+        """
+        Predict future values by projecting matched patterns forward.
+
+        Parameters:
+        -----------
+        h : int
+            Number of steps ahead to predict.
+        thres_clu : float
+            Threshold to determine cluster maximum distance.
+        Other params are passed to find_patterns if no sequences are present.
+        
+        Returns:
+        --------
+        df_pred : pd.DataFrame
+            A DataFrame with future predictions.
+        """
+        if len(self.sequences) == 0:
+            raise Exception('No shape found, please fit before predict.')
+
+        # Create base 3D grid for prediction
+        source_coor = np.meshgrid(np.arange(self.Shape_3D.dim[0]),
+                                  np.arange(self.Shape_3D.dim[1]),
+                                  np.arange(h), indexing='ij')
+        source_np = np.column_stack([a.ravel() for a in source_coor])
+        l_mat = []
+
+        # Process each matched subvolume
+        for i in range(len(self.sequences)):
+        
+            # Get the future subvolume (length h) that starts right after the matched pattern
+            sub_a = self.data[
+                self.sequences.iloc[i, 0]:self.sequences.iloc[i, 1],
+                self.sequences.iloc[i, 2]:self.sequences.iloc[i, 3],
+                self.sequences.iloc[i, 5]:self.sequences.iloc[i, 5] + h
+            ]
+        
+            # Rotate subvolume to align it the same way as the matched pattern
+            sub_a = np.rot90(sub_a, k=self.sequences.iloc[i, 7], axes=(0, 1))
+        
+            # Grab the matching pattern that came before the prediction horizon
+            matc = self.data[
+                self.sequences.iloc[i, 0]:self.sequences.iloc[i, 1],
+                self.sequences.iloc[i, 2]:self.sequences.iloc[i, 3],
+                self.sequences.iloc[i, 4]:self.sequences.iloc[i, 5]
+            ]
+        
+            # Normalize the future subvolume using the min/max of the matched pattern
+            sub_a = (sub_a - matc.min()) / (matc.max() - matc.min())
+        
+            # Create meshgrid for normalized x, y, z coordinates
+            x_coords, y_coords, z_coords = np.meshgrid(
+                np.arange(sub_a.shape[0]),
+                np.arange(sub_a.shape[1]),
+                np.arange(sub_a.shape[2]),
+                indexing='ij'
+            )
+        
+            # Normalize coordinates to [0, 1]
+            x_norm = x_coords.ravel() / x_coords.max()
+            y_norm = y_coords.ravel() / y_coords.max()
+            z_norm = z_coords.ravel() / z_coords.max()
+        
+            # Flatten subvolume and stack with coordinates
+            sub_a = sub_a.reshape(-1, 1)
+            sub_a = np.column_stack((x_norm, y_norm, z_norm, sub_a.ravel()))
+        
+            # Rescale coordinates back to match expected Shape_3D resolution
+            sub_a[:, :3] *= tuple(np.array(list(self.Shape_3D.dim[:2]) + [h]) - 1)
+        
+            # If the matrix is smaller than expected, pad it with zeros at missing positions
+            if len(sub_a) < self.Shape_3D.dim[0] * self.Shape_3D.dim[1] * h:
+                sub_a[:, :3] = np.round(sub_a[:, :3]).astype(int)
+                for row in source_np:
+                    if not np.any(np.all(sub_a[:, :3] == row, axis=1)):
+                        new_row = np.append(row, 0)
+                        sub_a = np.vstack([sub_a, new_row])
+        
+                # Reorder so it's in the same grid order as source_np
+                reordered_sub_a = np.zeros_like(sub_a)
+                for ki, row in enumerate(source_np):
+                    index = np.where(np.all(sub_a[:, :3] == row, axis=1))[0][0]
+                    reordered_sub_a[ki] = sub_a[index]
+                sub_a = reordered_sub_a.copy()
+        
+                # Handle possible duplicates just in case
+                if len(sub_a) > self.Shape_3D.dim[0] * self.Shape_3D.dim[1] * h:
+                    sub_a[:, :3] = np.round(sub_a[:, :3]).astype(int)
+                    unique_rows, indices, inverse_indices = np.unique(sub_a[:, :3], axis=0, return_index=True, return_inverse=True)
+                    means_sub = np.zeros((unique_rows.shape[0], sub_a.shape[1]))
+                    means_sub[:, :3] = unique_rows
+                    means_sub[:, 3] = np.bincount(inverse_indices, weights=sub_a[:, 3])
+                    sub_a = means_sub.copy()
+        
+            # If the matrix is larger than expected, merge duplicates
+            elif len(sub_a) > self.Shape_3D.dim[0] * self.Shape_3D.dim[1] * h:
+                sub_a[:, :3] = np.round(sub_a[:, :3]).astype(int)
+                unique_rows, indices, inverse_indices = np.unique(sub_a[:, :3], axis=0, return_index=True, return_inverse=True)
+                means_sub = np.zeros((unique_rows.shape[0], sub_a.shape[1]))
+                means_sub[:, :3] = unique_rows
+                means_sub[:, 3] = np.bincount(inverse_indices, weights=sub_a[:, 3])
+                sub_a = means_sub.copy()
+        
+                # Check again for missing entries and pad with zeros
+                if len(sub_a) < self.Shape_3D.dim[0] * self.Shape_3D.dim[1] * h:
+                    for row in source_np:
+                        if not np.any(np.all(sub_a[:, :3] == row, axis=1)):
+                            new_row = np.append(row, 0)
+                            sub_a = np.vstack([sub_a, new_row])
+                    reordered_sub_a = np.zeros_like(sub_a)
+                    for ki, row in enumerate(source_np):
+                        index = np.where(np.all(sub_a[:, :3] == row, axis=1))[0][0]
+                        reordered_sub_a[ki] = sub_a[index]
+                    sub_a = reordered_sub_a.copy()
+        
+            # Add to the list of matrices used for ensemble prediction
+            l_mat.append(sub_a)
+
+        # Cluster matched volumes to reduce noise
+        cluster_labels = cluster_based_on_threshold(l_mat, (self.Shape_3D.dim[0]*self.Shape_3D.dim[1]*h/thres_clu))
+        l_mat_sub = [l_mat[i] for i in range(len(cluster_labels)) if pd.Series(cluster_labels).value_counts().loc[cluster_labels[i]] == pd.Series(cluster_labels).value_counts().max()]
+        last_sub_val = np.array([arr[:, 3] for arr in l_mat_sub]).mean(axis=0)
+
+        # Store prediction
+        df_pred = pd.DataFrame(np.hstack((source_np, last_sub_val.reshape(-1, 1))),
+                               columns=['x', 'y', 'time', 'pred'])
+        df_pred['time'] += self.Shape_3D.dim[2]
+        self.df_pred = df_pred
+        return df_pred
+
+    def plot_predict(self, axis_show=True, mini_b=0.01):
+        # Check if predictions have been generated
+        if self.df_pred is None:
+            raise Exception('Please create the prediction with "predict" to then plot it.')
+    
+        # Resize coordinates to match the shape dimensions
+        coor_resize = self.Shape_3D.coordinates[:, :3] * (tuple(d - 1 for d in self.Shape_3D.dim))
+        x, y, z = coor_resize[:, 0], coor_resize[:, 1], coor_resize[:, 2]
+        
+        # Set color mapping for coordinates using a greyscale colormap
+        cmap = cm.get_cmap('Greys')
+        norm = mcolors.LogNorm(vmin=0.01, vmax=self.Shape_3D.coordinates.max())
+        marker_colors = cmap(norm(self.Shape_3D.weights))  # Normalize based on weights
+    
+        # Extract prediction coordinates and colorize them based on the prediction's value
+        x_pred, y_pred, z_pred = np.array(self.df_pred.iloc[:, 0]), np.array(self.df_pred.iloc[:, 1]), np.array(self.df_pred.iloc[:, 2])
+        cmap_pred = cm.get_cmap('Reds')  # Colormap for predictions
+        marker_colors_pred = cmap_pred(norm(np.array(self.df_pred.iloc[:, -1])))  # Normalize predicted weights
+    
+        # Combine the resized coordinates and the weights into a single array for plotting
+        coordinates_tot = np.hstack((coor_resize, self.Shape_3D.weights.reshape(-1, 1)))
+        coordinates_tot = np.vstack((coordinates_tot, np.array(self.df_pred)))
+        coordinates_tot = coordinates_tot[coordinates_tot[:, 3] > 0]  # Filter out rows with zero weight
+        weight_tot = coordinates_tot[:, 3]  # Extract weights for further processing
+        coordinates_tot = coordinates_tot[:, :3]  # Only keep the 3D coordinates
+    
+        # Compute pairwise distances between all points in the combined coordinates
+        dist_matrix = distance.cdist(coordinates_tot, coordinates_tot)
+    
+        # Compute the Minimum Spanning Tree (MST) from the distance matrix
+        mst = minimum_spanning_tree(dist_matrix)
+    
+        # Extract the edges of the MST
+        edges = np.transpose(mst.nonzero())
+    
+        # Create a 3D plot using Plotly
+        fig = go.Figure()
+    
+        # Add prediction points as a scatter plot (in red)
+        fig.add_trace(go.Scatter3d(
+            x=x_pred, y=y_pred, z=z_pred,
+            mode='markers',
+            marker=dict(size=10, color=marker_colors_pred),
+            customdata=np.array(self.df_pred.iloc[:, -1]).reshape(-1, 1),
+            hovertemplate="Value: %{customdata[0]:.2f}<extra></extra>"
+        ))
+    
+        # Add original points as a scatter plot (in grey)
+        fig.add_trace(go.Scatter3d(
+            x=x, y=y, z=z,
+            mode='markers',
+            marker=dict(size=10, color=marker_colors),
+            customdata=self.Shape_3D.weights.reshape(-1, 1),
+            hovertemplate="Value: %{customdata[0]:.2f}<extra></extra>"
+        ))
+    
+        # Add edges of the MST to the plot (connecting the points)
+        for edge in edges:
+            fig.add_trace(go.Scatter3d(
+                x=[coordinates_tot[edge[0], 0], coordinates_tot[edge[1], 0]],
+                y=[coordinates_tot[edge[0], 1], coordinates_tot[edge[1], 1]],
+                z=[coordinates_tot[edge[0], 2], coordinates_tot[edge[1], 2]],
+                mode='lines',
+                line=dict(color='grey', width=2),
+                hoverinfo='skip'
+            ))
+    
+        # Update layout with axis labels and a title
+        fig.update_layout(scene=dict(
+                            xaxis_title='x',
+                            yaxis_title='y',
+                            zaxis_title='time'),
+                          title='Shape(Grey) + Prediction(Red)',
+                          showlegend=False)
+    
+        # Optionally hide axis labels and gridlines
+        if axis_show == False:
+            fig.update_layout(scene=dict(
+                xaxis=dict(visible=False),
+                yaxis=dict(visible=False),
+                zaxis=dict(visible=False)
+            ))
+    
+        # Display the plot
+        plot(fig, auto_open=True)
 
 
 
