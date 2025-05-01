@@ -1081,11 +1081,393 @@ class finder_3D():
 
 
 
+# =============================================================================
+# ShapeFinder with covaraites 
+# =============================================================================
 
 
+class finder_multi():
+    def __init__(self,data,cov,Shape=Shape(),Shape_cov=None,sequences=[],sequences_cov=[]):
 
+        self.data=data
+        self.cov=cov
+        self.Shape=Shape
+        self.Shape_cov=Shape_cov
+        self.sequences=sequences
+        self.sequences_cov=sequences_cov
+        
+    def plot_inputs(self):
+        if len(self.Shape_cov) == 0:
+            raise Exception("Sorry, no input to plot.")
+    
+        num_plots = len(self.Shape_cov)+1
+        grid_size = math.isqrt(num_plots)  # integer square root
+        if grid_size * grid_size < num_plots:  # If not a perfect square
+            grid_size += 1
 
+        subplot_width = 7
+        subplot_height = 5
+        fig, axs = plt.subplots(grid_size, grid_size, figsize=(subplot_width * grid_size, subplot_height * grid_size))
 
+        if num_plots > 1:
+            axs = axs.ravel()
+        if not isinstance(axs, np.ndarray):
+            axs = np.array([axs])
 
+        for i in range(num_plots):
+            if i==0:
+                axs[i].plot(pd.Series(self.Shape.values), marker='o')
+                axs[i].set_xlabel('Time')
+                axs[i].set_title("Main Variable", style='italic', color='grey')
+            else:
+                axs[i].plot(pd.Series(self.Shape_cov[i-1].values), marker='o')
+                axs[i].set_xlabel('Date')
+                axs[i].set_title(f"Variable {i}", style='italic', color='grey')
 
+        if grid_size * grid_size > num_plots:
+            # If there are extra subplot spaces in the grid, remove them
+            for j in range(i + 1, grid_size * grid_size):
+                fig.delaxes(axs[j])
+
+        plt.tight_layout()
+        plt.suptitle('Input',y=1.02)
+        plt.show()
+        
+    def find_patterns(self, metric='euclidean', min_d=0.5, dtw_sel=0, select=True,weight=None, min_mat=0):
+        # Clear any previously stored sequences
+        self.sequences = []
+        self.sequences_cov = []
+        
+        # Check if dtw_sel is zero when metric is 'euclidean'
+        if metric=='euclidean':
+            dtw_sel=0
+        if weight==None:
+            weight=[1]+[1]*(len(self.Shape_cov))
+        # Convert custom shape values to a pandas Series and normalize it
+        seq1 = pd.Series(data=self.Shape.values)
+        if seq1.var() != 0.0:
+            seq1 = (seq1 - seq1.min()) / (seq1.max() - seq1.min())
+        seq1 = np.array(seq1)
+        
+        seq1_cov=[]
+        for i in self.Shape_cov:
+            val = pd.Series(i.values)
+            if val.var() != 0.0:
+                i_n = (val - val.min()) / (val.max() - val.min())
+            seq1_cov.append(np.array(i_n))
+        # Initialize the list to store the found sequences that match the custom shape
+        tot = []
+        for col in self.data.columns:
+            # try:
+            for time in self.data.loc[:,col].index:
+                flag=False
+                if dtw_sel == 0:
+                    # Loop through the testing sequence
+                    if len(self.data.loc[time:,col].iloc[:len(seq1)])==len(seq1):
+                        seq2 = self.data.loc[time:,col].iloc[:len(seq1)]
+                        last_d=seq2.index[-1]
+                        seq2 = (seq2 - seq2.min()) / (seq2.max() - seq2.min())
+                        # try:
+                        if metric == 'euclidean':
+                            # Calculate the Euclidean distance between the custom shape and the current window
+                            dist = ed.distance(seq1, seq2)*weight[0]
+                        elif metric == 'dtw':
+                            # Calculate the Dynamic Time Warping distance between the custom shape and the current window
+                            dist = dtw.distance(seq1, seq2)*weight[0]
+                        c_cov=0    
+                        for cov_shape in seq1_cov:
+                            seq_cov = self.cov[c_cov].loc[:last_d,col].iloc[-len(cov_shape):]
+                            if len(seq_cov)!=len(seq1_cov[c_cov]):
+                                flag=True
+                            seq_cov = (seq_cov - seq_cov.min()) / (seq_cov.max() - seq_cov.min())
+                            if metric == 'euclidean':
+                                # Calculate the Euclidean distance between the custom shape and the current window
+                                dist = dist + ed.distance(cov_shape, seq_cov)*weight[1+c_cov]
+                            elif metric == 'dtw':
+                                # Calculate the Dynamic Time Warping distance between the custom shape and the current window
+                                dist = dist + dtw.distance(cov_shape, seq_cov)*weight[1+c_cov]
+                            c_cov += 1
+                        if flag==False:    
+                            tot.append([last_d,col,dist, self.Shape.window,0])
+
+                else:
+                    # Loop through the range of window size variations (dtw_sel)
+                    for lop in range(int(-dtw_sel), int(dtw_sel) + 1):
+                        if len(self.data.loc[time:,col].iloc[:len(seq1)+ lop])==len(seq1)+ lop:
+                            seq2 = self.data.loc[time:,col].iloc[:len(seq1)+ lop]
+                            last_d=seq2.index[-1]
+                            seq2 = (seq2 - seq2.min()) / (seq2.max() - seq2.min())
+                            dist = dtw.distance(seq1, seq2)*weight[0]
+                            c_cov=0    
+                            for cov_shape in seq1_cov:
+                                seq_cov = self.cov[c_cov].loc[:last_d,col].iloc[-(len(cov_shape)+lop):]
+                                seq_cov = (seq_cov - seq_cov.min()) / (seq_cov.max() - seq_cov.min())
+                                if len(seq_cov)!=len(seq1_cov[c_cov])+lop:
+                                    flag=True
+                                dist = dist + dtw.distance(cov_shape, seq_cov)*weight[1+c_cov]
+                                c_cov += 1
+                            if flag==False:       
+                                tot.append([last_d,col, dist, self.Shape.window,lop])
+
+        tot=pd.DataFrame(tot) 
+        tot = tot.sort_values([2])
+        totu = tot[tot[2]<min_d]
+        if len(totu) < min_mat:
+            tot = tot.iloc[:min_mat, :]
+        else:
+            tot = totu.copy()
+              
+        s1=[]
+        s_c=[[] for _ in range(len(self.Shape_cov))]
+        if len(tot) > 0:
+            for ca in range(len(tot)):
+                s1.append((self.data.loc[:tot.iloc[ca,0],tot.iloc[ca,1]].iloc[-tot.iloc[ca,3]+tot.iloc[ca,4]:],tot.iloc[ca,2]))
+                for num in range(len(self.Shape_cov)):
+                    s_c[num].append(self.cov[num].loc[:tot.iloc[ca,0],tot.iloc[ca,1]].iloc[-self.Shape_cov[num].window+tot.iloc[ca,4]:])
+            
+            if select:
+                # Create a dictionary to store lists of Series by name
+                series_dict = {}
+                kept = []
+            
+                # Iterate through the data list
+                for idx, (series, value) in enumerate(s1):
+                    series_name = series.name
+            
+                    # Check if there are any Series with the same name in the dictionary
+                    if series_name in series_dict:
+                        # Get the list of series and values associated with this name
+                        series_values = series_dict[series_name]
+                        index_set = set(series.index)
+                        existing_flag = False
+            
+                        # Iterate over the list of (series, value) pairs
+                        for i, (existing_series, existing_value, existing_idx) in enumerate(series_values):
+                            # Calculate the intersection of indices
+                            intersection = index_set.intersection(existing_series.index)
+            
+                            # Check if the intersection is more than 50% of the existing series index
+                            if len(intersection) > 0.5 * len(existing_series.index):
+                                # Check the value, and if the new series is 'better', update the info
+                                if value < existing_value:
+                                    series_values[i] = (series, value, idx)
+                                    if existing_idx in kept:
+                                        kept.remove(existing_idx)
+                                    kept.append(idx)
+                                    existing_flag = True
+                                    break
+            
+                        # If the new series does not intersect more than 50% with any existing series, add it
+                        if not existing_flag:
+                            series_values.append((series, value, idx))
+                            kept.append(idx)
+            
+                        series_dict[series_name] = series_values  # Update the dictionary entry
+            
+                    else:
+                        # If the Series name is not in the dictionary, add it
+                        series_dict[series_name] = [(series, value, idx)]
+                        kept.append(idx)
+            
+                # Flatten the values from the dictionary and return them as a list
+                resu_l = [item for sublist in series_dict.values() for item in sublist]
+                s1 = [(resu[0], resu[1]) for resu in resu_l]  # Drop the index from the result
+                nb = 0
+                for sequ in s_c:
+                    f_seq = []
+                    c_cov = 0
+                    for sub in sequ:
+                        if c_cov in kept:
+                            f_seq.append(sub)
+                        c_cov += 1
+                    s_c[nb] = f_seq
+                    nb += 1
+
+            self.sequences = s1
+            self.sequences_cov = s_c
+            
+        else:
+            print('No patterns found')
+            
+            
+    def plot_sequences(self,how='units',cov=False):
+        """
+        Plots the found sequences matching the custom shape.
+
+        Args:
+            how (str, optional): 'units' to plot each sequence separately or 'total' to plot all sequences together. Defaults to 'units'.
+
+        Raises:
+            Exception: If no patterns were found, raises an exception indicating no patterns to plot.
+        """
+        # Check if any sequences were found, otherwise raise an exception
+        if len(self.sequences) == 0:
+            raise Exception("Sorry, no patterns to plot.")
+    
+        if how == 'units':
+            # Plot each sequence separately
+            for i in range(len(self.sequences)):
+                plt.plot(self.sequences[i][0], marker='o')
+                plt.xlabel('Date')
+                plt.ylabel('Values')  # Corrected typo in xlabel -> ylabel
+                plt.suptitle(str(self.sequences[i][0].name), y=1.02, fontsize=15)
+                plt.title("d = " + str(self.sequences[i][1]), style='italic', color='grey')
+                plt.show()
+    
+        elif how == 'total':
+            # Plot all sequences together in a grid layout
+            num_plots = len(self.sequences)
+            grid_size = math.isqrt(num_plots)  # integer square root
+            if grid_size * grid_size < num_plots:  # If not a perfect square
+                grid_size += 1
+    
+            subplot_width = 7
+            subplot_height = 5
+            fig, axs = plt.subplots(grid_size, grid_size, figsize=(subplot_width * grid_size, subplot_height * grid_size))
+    
+            if num_plots > 1:
+                axs = axs.ravel()
+            if not isinstance(axs, np.ndarray):
+                axs = np.array([axs])
+    
+            for i in range(num_plots):
+                axs[i].plot(self.sequences[i][0], marker='o')
+                axs[i].set_xlabel('Date')
+                axs[i].set_title(f"{self.sequences[i][0].name}\nd = {self.sequences[i][1]}", style='italic', color='grey')
+    
+            if grid_size * grid_size > num_plots:
+                # If there are extra subplot spaces in the grid, remove them
+                for j in range(i + 1, grid_size * grid_size):
+                    fig.delaxes(axs[j])
+    
+            plt.tight_layout()
+            plt.suptitle('Main Variable',y=1.02)
+            plt.show()
+            
+            if cov==True:
+                for covi in range(len(self.sequences_cov)):
+                    num_plots = len(self.sequences_cov[covi])
+                    grid_size = math.isqrt(num_plots)  # integer square root
+                    if grid_size * grid_size < num_plots:  # If not a perfect square
+                        grid_size += 1
+            
+                    subplot_width = 7
+                    subplot_height = 5
+                    fig, axs = plt.subplots(grid_size, grid_size, figsize=(subplot_width * grid_size, subplot_height * grid_size))
+            
+                    if num_plots > 1:
+                        axs = axs.ravel()
+                    if not isinstance(axs, np.ndarray):
+                        axs = np.array([axs])
+            
+                    for i in range(num_plots):
+                        axs[i].plot(self.sequences_cov[covi][i], marker='o')
+                        axs[i].set_xlabel('Date')
+                        axs[i].set_title(f"{self.sequences[i][0].name}\nd = {self.sequences[i][1]}", style='italic', color='grey')
+            
+                    if grid_size * grid_size > num_plots:
+                        # If there are extra subplot spaces in the grid, remove them
+                        for j in range(i + 1, grid_size * grid_size):
+                            fig.delaxes(axs[j])
+            
+                    plt.tight_layout()
+                    plt.suptitle('Variable '+str(covi+1),y=1.02)
+                    plt.show()
+                    
+            
+    def create_sce(self,horizon=6,clu_thres=3):
+        """
+        Creates scenarios based on matched series in historical data.
+        
+        Args:
+            horizon (int): The number of future time steps to consider for scenario creation.
+            clu_thres (int): The threshold for clustering, influencing the number of clusters.
+        
+        """
+        # Ensure sequences exist before proceeding
+        if len(self.sequences) == 0:
+            raise Exception('No shape found, please fit before predict.')
+    
+        # Extract key stats from stored sequences
+        tot_seq = [
+            [series.name, series.index[-1], series.min(), series.max(), series.sum()] 
+            for series, weight in self.sequences]
+    
+        pred_seq = []
+        # Generate future sequences for each stored sequence
+        for col, last_date, mi, ma, somme in tot_seq:
+            date = self.data.index.get_loc(last_date)  # Get index position of the last known date
+            # Ensure there are enough future values for the specified horizon
+            if date + horizon < len(self.data):
+                # Extract future values for the given column
+                seq = self.data.iloc[date + 1 : date + 1 + horizon, self.data.columns.get_loc(col)].reset_index(drop=True)
+                # Normalize sequence using min-max scaling
+                seq = (seq - mi) / (ma - mi)
+                pred_seq.append(seq.tolist())
+    
+        # Convert sequences to a DataFrame
+        tot_seq = pd.DataFrame(pred_seq)
+        # Perform hierarchical clustering
+        linkage_matrix = linkage(tot_seq, method='ward')
+        clusters = fcluster(linkage_matrix, horizon / clu_thres, criterion='distance')
+        # Assign clusters to the sequences
+        tot_seq['Cluster'] = clusters
+        # Compute mean values per cluster
+        val_sce = tot_seq.groupby('Cluster').mean()
+        # Set the index to the relative frequency of each cluster
+        val_sce.index = round(pd.Series(clusters).value_counts(normalize=True).sort_index(), 2)
+        # Store the computed scenarios
+        self.val_sce = val_sce
+
+   
+    def predict(self, horizon=6, clu_thres=3):
+        """
+        Predicts future values based on historical sequences using hierarchical clustering.
+    
+        Args:
+            horizon (int): The number of future time steps to predict.
+            clu_thres (int): The threshold for clustering, affecting the number of clusters.
+    
+        Returns:
+            pd.Series: The final predicted sequence.
+        """
+        # Ensure sequences exist before proceeding
+        if len(self.sequences) == 0:
+            raise Exception('No shape found, please fit before predict.')
+        # Extract key statistics from stored sequences
+        tot_seq = [
+            [series.name, series.index[-1], series.min(), series.max(), series.sum()] 
+            for series, weight in self.sequences]
+    
+        pred_seq = []
+        # Generate future sequences for each stored sequence
+        for col, last_date, mi, ma, somme in tot_seq:
+            date = self.data.index.get_loc(last_date)  # Get index position of the last known date
+            if date + horizon < len(self.data):
+                # Extract future values for the given column
+                seq = self.data.iloc[date + 1 : date + 1 + horizon, self.data.columns.get_loc(col)].reset_index(drop=True)
+                # Normalize sequence using min-max scaling
+                seq = (seq - mi) / (ma - mi)
+                pred_seq.append(seq.tolist())
+
+        tot_seq = pd.DataFrame(pred_seq)
+        # Perform hierarchical clustering
+        linkage_matrix = linkage(tot_seq, method='ward')
+        clusters = fcluster(linkage_matrix, horizon / clu_thres, criterion='distance')
+        # Assign clusters to the sequences
+        tot_seq['Cluster'] = clusters
+        # Compute mean values per cluster
+        val_sce = tot_seq.groupby('Cluster').mean()
+        # Determine the most frequent cluster
+        pr = round(pd.Series(clusters).value_counts(normalize=True).sort_index(), 2)
+        # Extract the cluster with the highest frequency
+        pred_ori = val_sce.loc[pr == pr.max(), :]
+        # Compute the mean prediction across sequences in the most frequent cluster
+        pred_ori = pred_ori.mean(axis=0)
+        # Retrieve original shape values for denormalization
+        seq1 = pd.Series(data=self.Shape.values)
+        # Denormalize predictions back to original scale
+        preds = pred_ori * (seq1.max() - seq1.min()) + seq1.min()
+    
+        return preds
 
