@@ -1848,3 +1848,4 @@ class finder_multi_static():
         preds = pred_ori * (seq1.max() - seq1.min()) + seq1.min()
     
         return preds
+
