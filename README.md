@@ -19,15 +19,15 @@ shape = Shape()
 # 1. Random shape with a given window length 
 shape.set_random_shape(window=10)   # in this exemple, the shape has 10 random values between 0 and 1
 
-# 2. Shape based on values given by user (list, series or numpy format)
-shape.set_shape([0,0.5,1,0.5,0])   # in this exemple, the shape has 5 values that draw an "up-and-down" shape. 
-
-# 3. Shape drawn by user
+# 2. Shape drawn by user
 shape.draw_shape(window=10) # in this exemple, a pop up appears to let the user draw the shape wanted with a 10 timestamp window. 
+
+# 3. Shape based on values given by user (list, series or numpy format)
+shape.set_shape([0,0.5,1,0.5,0])   # in this exemple, the shape has 5 values that draw an "up-and-down" shape. 
 
 
 ### Visualize the shape created 
-shape.plot()    # A figure is created with 
+shape.plot()    # A figure is created 
 
 ```
 
@@ -59,13 +59,15 @@ find = finder(data,Shape=shape)
 find.find_patterns() 
 # Look for patterns with euclidean distance lower than 1
 find.find_patterns(min_d=1) 
-# Look for patterns with Dynamic Time Warping distance lower than 0.5
-find.find_patterns(min_d=0.5,metric='dtw')
-# Look for patterns with Dynamic Time Warping distance lower than 0.5 and allow window with 4, 5 and 6 timestamp 
+# Look for patterns with Dynamic Time Warping distance lower than 0.25
+find.find_patterns(min_d=0.25,metric='dtw')
+# Look for patterns with Dynamic Time Warping distance lower than 0.25 and allow window with 4, 5 and 6 timestamp 
 # window to look = 5 +/- dtw_sel(1)
-find.find_patterns(min_d=0.5,metric='dtw',dtw_sel=1)
+find.find_patterns(min_d=0.25,metric='dtw',dtw_sel=1)
 # Same but allowing overlapping windows 
-find.find_patterns(min_d=0.5,metric='dtw',dtw_sel=1,select=False)
+find.find_patterns(min_d=0.25,metric='dtw',dtw_sel=1,select=False)
+# Force the minimu number of similar patterns to 5 
+find.find_patterns(min_d=0.25,metric='dtw',dtw_sel=1,select=True,min_mat=5)
 
 ### Plot the patterns found
 # Plot individual figures 
