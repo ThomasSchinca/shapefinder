@@ -103,9 +103,11 @@ find.create_sce(horizon=3,clu_thres=3)
 # We can check how do the scenerio look like with their associated probabilities (in the legend).
 find.plot_scenario()
 ```
+
 <div align="center">
   <img src="./docs/assets/Scenario.png" alt="Scenario with their associated probabilities" width="400"/>
 </div>
+
 ```python
 # We can also just predict a point estimate using the highest probable scenario
 pred = find.predict(horizon=3,clu_thres=3)
