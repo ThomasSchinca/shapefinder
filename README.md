@@ -40,7 +40,10 @@ shape.set_shape([0,0.5,1,0.5,0])   # in this exemple, the shape has 5 values tha
 shape.plot()    # A figure is created 
 
 ```
-<img src="./docs/assets/Input.png" alt="Input Shape" width="400"/>
+
+<div align="center">
+    <img src="./docs/assets/Input.png" alt="Input Shape" width="400"/>
+</div>
 
 Once the Shape is defined, the finder is set to find the shape in the given dataset. 
 
@@ -86,8 +89,9 @@ find.plot_sequences(how='units')
 # Plot global figure with all patterns
 find.plot_sequences(how='total') 
 ```
-<img src="./docs/assets/Similar_plot.png" alt="Total similar sequences" width="400"/>
-
+<div align="center">
+    <img src="./docs/assets/Similar_plot.png" alt="Total similar sequences" width="800"/>
+</div>
 The final step is then to create the future scenario and predict. 
 
 ### Scenario and prediction creation 
@@ -99,8 +103,9 @@ find.create_sce(horizon=3,clu_thres=3)
 # We can check how do the scenerio look like with their associated probabilities (in the legend).
 find.plot_scenario()
 ```
-<img src="./docs/assets/Scenario.png" alt="Scenario with their associated probabilities" width="400"/>
-
+<div align="center">
+  <img src="./docs/assets/Scenario.png" alt="Scenario with their associated probabilities" width="400"/>
+</div>
 ```python
 # We can also just predict a point estimate using the highest probable scenario
 pred = find.predict(horizon=3,clu_thres=3)
@@ -131,10 +136,10 @@ The following papers use ShapeFinder's methods and code:
 - **[Temporal Patterns in Migration Flows : Evidence from South Sudan (2025)](https://doi.org/10.1002/for.3209)**  
   Uses finder_multi to generate forecasts for migration flows in South Sudan.
 
-- **[Temporal Patterns in Conflict Prediction: An improved Shape-Based Approach](Accepted in Journal of Peace Research)**  
+- **Temporal Patterns in Conflict Prediction: An improved Shape-Based Approach (Accepted in Journal of Peace Research)**  
   Uses finder to predict conflict fatalities at the country-month level. 
 
-- **[The geometry of conflict : 3D Spatio-temporal patterns in fatalities prediction](Upcomming)**  
+- **The geometry of conflict : 3D Spatio-temporal patterns in fatalities prediction (Upcomming)**  
   Uses Shape_3D and finder_3D to forecast conflict fatalities at the 0.5x0.5°(called Prio-Grid) month level, 
 
 
