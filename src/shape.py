@@ -196,12 +196,14 @@ class Shape():
         self.values = value_data.tolist()
         self.window=len(np.random.uniform(0, 1,window).tolist())
 
-    def plot(self):
+    def plot(self,save=None):
         plt.plot(self.time,self.values,marker='o')
         plt.xlabel('Timestamp')
         plt.ylabel('Values')
         plt.title('Shape wanted')
         plt.ylim(-0.05,1.05)
+        if save is not None:
+            plt.savefig(save, dpi=300, bbox_inches='tight')
         plt.show()
 
         
@@ -360,7 +362,7 @@ class finder():
                     min_mat_loop=min_mat_loop+1
 
         
-    def plot_sequences(self,how='units'):
+    def plot_sequences(self,how='units',save=None):
         """
         Plots the found sequences matching the custom shape.
 
@@ -411,6 +413,8 @@ class finder():
                     fig.delaxes(axs[j])
     
             plt.tight_layout()
+            if save is not None:
+                plt.savefig(save, dpi=300, bbox_inches='tight')
             plt.show()
 
     def create_sce(self,horizon=6,clu_thres=3):
@@ -457,7 +461,7 @@ class finder():
         # Store the computed scenarios
         self.val_sce = val_sce
         
-    def plot_scenario(self):
+    def plot_scenario(self,save=None):
         """
         Plots the scenarios associated with their probability.
 
@@ -486,6 +490,8 @@ class finder():
         plt.plot(pd.Series(self.Shape.values),color='grey',marker='o')
         plt.legend()
         plt.title("Scenarios")
+        if save is not None:
+            plt.savefig(save, dpi=300, bbox_inches='tight')
         plt.show()
         
     def predict(self, horizon=6, clu_thres=3):
