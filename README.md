@@ -138,7 +138,7 @@ The following papers use ShapeFinder's methods and code:
 - **[Temporal Patterns in Migration Flows : Evidence from South Sudan (2025)](https://doi.org/10.1002/for.3209)**  
   Uses finder_multi to generate forecasts for migration flows in South Sudan.
 
-- **Temporal Patterns in Conflict Prediction: An improved Shape-Based Approach (Accepted in Journal of Peace Research)**  
+- **[Temporal Patterns in Conflict Prediction: An improved Shape-Based Approach (2025)](https://journals.sagepub.com/doi/10.1177/00223433251330790)**  
   Uses finder to predict conflict fatalities at the country-month level. 
 
 - **The geometry of conflict : 3D Spatio-temporal patterns in fatalities prediction (Upcomming)**  
