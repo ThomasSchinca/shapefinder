@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+import os
 
 # =============================================================================
 # 2D shapes 
@@ -19,7 +20,13 @@ import pickle
 # Import dataset Confilct fatalities 
 # Raw data from UCDP, available here : https://ucdp.uu.se/downloads/)
 
-df_conf = pd.read_csv('Conf.csv',index_col=0,parse_dates=True)
+# Get the path to this test file
+CURRENT_DIR = os.path.dirname(__file__)
+
+# Construct the full path to Conf.csv
+csv_path = os.path.join(CURRENT_DIR, "Conf.csv")
+
+df_conf = pd.read_csv(csv_path,index_col=0,parse_dates=True)
 
 # Init a shape as a W shape 
 shape = Shape()
