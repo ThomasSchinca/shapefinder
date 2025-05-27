@@ -25,26 +25,28 @@ CURRENT_DIR = os.path.dirname(__file__)
 
 # Construct the full path to Conf.csv
 csv_path = os.path.join(CURRENT_DIR, "Conf.csv")
+# Construct the path for output 
+output_dir = os.path.join(CURRENT_DIR, "Output")
 
 df_conf = pd.read_csv(csv_path,index_col=0,parse_dates=True)
 
 # Init a shape as a W shape 
 shape = Shape()
 shape.set_shape([1,0.5,0,0.5,1,0.5,0]) 
-shape.plot(save='Output/Input.png')
+shape.plot(save=output_dir+'Input.png')
 
 # Init a finder in the conflict fatalities dataset
 find = finder(df_conf,Shape=shape)
 find.find_patterns(min_d=0.35,select=True,metric='dtw',dtw_sel=1)
 find.create_sce(horizon=3,clu_thres=2)
-find.plot_scenario(save='Output/scenario_plot.png')
+find.plot_scenario(save=output_dir+'scenario_plot.png')
 
 # Predict the next three points
 pred = find.predict(horizon=3,clu_thres=2)
 
 # Save the results
 dict_save = {'prediction':pred,'similar_sequences':find.sequences}
-with open('Output/2D_store.pkl', 'wb') as f:
+with open(output_dir+'2D_store.pkl', 'wb') as f:
     pickle.dump(dict_save, f)
     
 
@@ -103,6 +105,6 @@ pred = finder.predict(h=3,thres_clu=10)
 
 # Save the results
 dict_save = {'prediction':pred,'similar_sequences':finder.sequences}
-with open('Output/3D_store.pkl', 'wb') as f:
+with open(output_dir+'3D_store.pkl', 'wb') as f:
     pickle.dump(dict_save, f)
     
