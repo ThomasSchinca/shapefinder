@@ -28,7 +28,7 @@ def test_2D():
     # Construct the full path to Conf.csv
     csv_path = os.path.join(CURRENT_DIR, "Conf.csv")
     # Construct the path for output 
-    output_dir = os.path.join(CURRENT_DIR, "Output")
+    output_dir = os.path.join(CURRENT_DIR, "Output/")
     
     df_conf = pd.read_csv(csv_path,index_col=0,parse_dates=True)
     
@@ -61,7 +61,7 @@ def test_3D():
     # Get the path to this test file
     CURRENT_DIR = os.path.dirname(__file__)
     # Construct the path for output 
-    output_dir = os.path.join(CURRENT_DIR, "Output")
+    output_dir = os.path.join(CURRENT_DIR, "Output/")
     
     # Define a small 3D pattern array `test` (shape: 2x3x4)
     test = np.array([
