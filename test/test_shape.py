@@ -57,7 +57,12 @@ def test_2D():
 # =============================================================================
 
 def test_3D():
-
+    
+    # Get the path to this test file
+    CURRENT_DIR = os.path.dirname(__file__)
+    # Construct the path for output 
+    output_dir = os.path.join(CURRENT_DIR, "Output")
+    
     # Define a small 3D pattern array `test` (shape: 2x3x4)
     test = np.array([
         [[0.36363636, 0.45454545, 0.18181818, 0.        ],
