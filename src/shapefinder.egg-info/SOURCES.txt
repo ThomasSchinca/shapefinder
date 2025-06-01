@@ -2,6 +2,7 @@
 LICENSE
 README.md
 pyproject.toml
+requirements.txt
 .github/workflows/test.yml
 docs/assets/Input.png
 docs/assets/Scenario.png
