@@ -25,7 +25,10 @@ jobs:
           pip install tox
 
       - name: Run tests with tox
-        run: tox -e py${{ matrix.python-version | replace('.', '') }}
+        run: |
+          pyver=py${{ matrix.python-version }}  # e.g. py3.10
+          pyver=${pyver/./}                     # Remove dot → py310
+          tox -e $pyver
 
       - name: Add and commit
         uses: EndBug/add-and-commit@v9
