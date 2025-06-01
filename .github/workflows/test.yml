@@ -26,11 +26,12 @@ jobs:
 
       - name: Run tests with tox
         run: |
-          pyver=py${{ matrix.python-version }}  # e.g. py3.10
-          pyver=${pyver/./}                     # Remove dot → py310
+          pyver=py${{ matrix.python-version }} 
+          pyver=${pyver/./}                     
           tox -e $pyver
 
       - name: Add and commit
+        if: matrix.python-version == '3.11'  
         uses: EndBug/add-and-commit@v9
         with:
           author_name: GitHub Actions
