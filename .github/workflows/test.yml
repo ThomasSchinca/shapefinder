@@ -31,7 +31,7 @@ jobs:
           tox -e $pyver
 
       - name: Add and commit
-        if: matrix.python-version == '3.11'  
+        if: matrix.python-version == '3.9'  
         uses: EndBug/add-and-commit@v9
         with:
           author_name: GitHub Actions
