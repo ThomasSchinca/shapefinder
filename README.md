@@ -42,7 +42,7 @@ shape.plot()    # A figure is created
 ```
 
 <div align="center">
-    <img src="https://github.com/ThomasSchinca/shapefinder/docs/assets/Input.png" alt="Input Shape" width="400"/>
+    <img src="https://github.com/ThomasSchinca/shapefinder/blob/main/docs/assets/Input.png" alt="Input Shape" width="400"/>
 </div>
 
 Once the Shape is defined, the finder is set to find the shape in the given dataset. 
