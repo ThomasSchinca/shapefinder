@@ -90,7 +90,7 @@ find.plot_sequences(how='units')
 find.plot_sequences(how='total') 
 ```
 <div align="center">
-    <img src="./docs/assets/Similar_plot.png" alt="Total similar sequences" width="800"/>
+    <img src="https://github.com/ThomasSchinca/shapefinder/blob/main/docs/assets/Similar_plot.png" alt="Total similar sequences" width="800"/>
 </div>
 The final step is then to create the future scenario and predict. 
 
@@ -105,7 +105,7 @@ find.plot_scenario()
 ```
 
 <div align="center">
-  <img src="./docs/assets/Scenario.png" alt="Scenario with their associated probabilities" width="400"/>
+  <img src="https://github.com/ThomasSchinca/shapefinder/blob/main/docs/assets/Scenario.png" alt="Scenario with their associated probabilities" width="400"/>
 </div>
 
 ```python
