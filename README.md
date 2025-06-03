@@ -6,8 +6,14 @@ It identifies and matches temporal patterns in data to forecast future trajector
 
 ## 📦 Installation
 
-Clone the repository and install dependencies:
+Before installing the package, [create a virtual environment](https://docs.python.org/3/tutorial/venv.html) to avoid conflicts with other packages. 
 
+Install shapefinder through PyPl:
+```bash
+python -m pip install shapefinder
+```
+
+Or using the github version:
 ```bash
 git clone https://github.com/ThomasSchinca/shapefinder.git
 cd shapefinder
